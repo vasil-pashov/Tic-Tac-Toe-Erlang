@@ -7,6 +7,9 @@
                   kernel,
                   stdlib
                  ]},
+  {modules, [
+        game_serv,
+        tic_tac_toe_sup]},
   {mod, { tic_tac_toe_app, []}},
   {env, []}
  ]}.

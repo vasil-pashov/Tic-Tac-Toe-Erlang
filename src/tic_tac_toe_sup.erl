@@ -25,8 +25,14 @@ start_link(ServName) ->
 
 init([ServName]) ->
     io:format("Init gs"),
-    {ok, {{one_for_all, 5, 100}, [
-            {tic_tac_toe_game_app, {game_serv, start_link, [ServName]},
-            permanent, 1000, worker, [game_serv]}
-    ]}}.
-
+    SupFlags = #{strategy => one_for_all,
+      intensity => 5,
+      period => 10
+    },
+    ChildSpecs = [#{id => tic_tac_toe_game_app,
+                    start => {game_serv, start_link, [ServName]},
+                    restart => transient,
+                    type => worker,
+                    modules => [game_serv]
+    }],
+    {ok, {SupFlags, ChildSpecs}}.

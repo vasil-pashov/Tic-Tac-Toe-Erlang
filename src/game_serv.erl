@@ -51,7 +51,7 @@ handle_call({set_in_q, Username}, _From, #state{in_queue=Q, in_game=InGame,
 handle_call(get_state, _From, State) ->
     {reply, {ok, State}, State};
 handle_call(stop, _From, State) ->
-    terminate(normal, State).
+    {stop, normal, ok, State}.
 
 handle_cast(_Msg, _State) ->
     {noreply, _State}.
@@ -62,7 +62,7 @@ handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
     {noreply, State};
 handle_info(matchmake, #state{q_size=QSize, in_queue=[P1, P2|T],
                               in_game=InGame, logged=Logged}=State) ->
-    io:format("Matchmake < 2~n"),
+    io:format("Matchmake > 2~n"),
     InGame1 =  set_player_in_game(P1, InGame, Logged),
     InGame2 = set_player_in_game(P2, InGame1, Logged),
     timer:send_after(5000, matchmake),

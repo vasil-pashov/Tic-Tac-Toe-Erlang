@@ -4,7 +4,7 @@
 -export([start_link/1]).
 -export([init/1]).
 
-start_link({_M, _F, _A}=MFA) -> supervisor:start_link({local, ?MODULE}, ?MODULE, MFA).
+start_link({_M, _F, _A}=MFA) -> supervisor:start_link(?MODULE, MFA, []).
 
 init({M, _F, _A}=MFA) ->
     io:format("Start game pool sup~n"),

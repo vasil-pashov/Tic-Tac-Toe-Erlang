@@ -5,11 +5,17 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  sync
                  ]},
   {modules, [
-        game_serv,
-        tic_tac_toe_sup]},
+             game_serv,
+             tic_tac_toe_sup,
+             game_pool_sup,
+             game_sup,
+             player_sup,
+             tic_tac_toe_sup
+            ]},
   {mod, { tic_tac_toe_app, []}},
   {env, []}
  ]}.

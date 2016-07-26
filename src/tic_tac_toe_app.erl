@@ -9,9 +9,9 @@
 %% Application callbacks
 %% ===================================================================
 
-start(_StartType, {name, ServName}) ->
-    io:format("Starting app~n"),
-    tic_tac_toe_sup:start_link(ServName).
+start(_StartType, _Args) ->
+    io:format("Starting the app~n"),
+    tic_tac_toe_sup:start_link([gs]).
 
 stop(_State) ->
     ok.

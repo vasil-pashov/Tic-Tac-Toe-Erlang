@@ -17,21 +17,21 @@
 
 start_link(ServName) ->
     io:format("Starting link~n"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [ServName]).
+    supervisor:start_link(?MODULE, [ServName]).
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([ServName]) ->
-    io:format("Init gs"),
+    io:format("Init gs~n"),
     SupFlags = #{strategy => one_for_all,
       intensity => 5,
       period => 10
     },
     ChildSpecs = [#{id => tic_tac_toe_game_app,
                     start => {game_serv, start_link, [ServName]},
-                    restart => transient,
+                    restart => permanent,
                     type => worker,
                     modules => [game_serv]
     }],

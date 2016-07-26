@@ -1,12 +1,13 @@
 -module(game_pool_sup).
 -behaviour(supervisor).
 
--export([start_link/1]).
+-export([start_link/0]).
 -export([init/1]).
 
-start_link({_M, _F, _A}=MFA) -> supervisor:start_link(?MODULE, MFA, []).
+start_link() ->
+    supervisor:start_link(?MODULE,  []).
 
-init({M, _F, _A}=MFA) ->
+init([]) ->
     io:format("Start game pool sup~n"),
     SupFlags = #{
         strategy => simple_one_for_one,
@@ -14,8 +15,8 @@ init({M, _F, _A}=MFA) ->
         period => 10
     },
     ChildSpecs = [#{id => game_instance,
-                    start => MFA,
-                    restart => transient,
+                    start => {game_sup, start_link, []},
+                    restart => permanent,
                     type => supervisor,
-                    modules => [M]}],
+                    modules => [game_sup]}],
     {ok, {SupFlags, ChildSpecs}}.

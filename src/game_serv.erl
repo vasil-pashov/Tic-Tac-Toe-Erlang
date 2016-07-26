@@ -5,7 +5,8 @@
     in_game = maps:new() :: map(),
     in_queue = [],
     q_size = 0 :: integer(),
-    logged = maps:new() :: map()
+    logged = maps:new() :: map(),
+    game_pool :: pid()
 }).
 
 -record(user, {
@@ -20,13 +21,14 @@
 -export([init/1, handle_call/3, handle_info/2, handle_cast/2,
          code_change/3, terminate/2]).
 
-start_link(ServName) ->
+start_link([ServName]) ->
     gen_server:start_link({local, ServName}, ?MODULE, [], []).
 
-init([]) ->
+init(GamePoolPid) ->
     io:format("Game server started~n"),
     self() ! matchmake,
-    {ok, #state{}}.
+    self() ! start_pool_sup,
+    {ok, #state{game_pool=GamePoolPid}}.
 
 handle_call({login, Username}, _From, #state{logged=Logged} = S) when is_binary(Username) ->
     io:format("~p~n", [S]),
@@ -50,19 +52,28 @@ handle_call({set_in_q, Username}, _From, #state{in_queue=Q, in_game=InGame,
     end;
 handle_call(get_state, _From, State) ->
     {reply, {ok, State}, State};
+%=======Start Game for testing purpose==================
+handle_call({start_game, Player1, Player2}, _From, #state{game_pool=GamePoolPid}=State) ->
+    io:format("GS: start game with players ~p ~p. Sup: ~p~n",[Player1, Player2, GamePoolPid]),
+    supervisor:start_child(GamePoolPid, [[<<"MyGame">>, Player1, Player2]]),
+    {reply, {ok, State}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
 handle_cast(_Msg, _State) ->
     {noreply, _State}.
 
+handle_info(start_pool_sup, State) ->
+    {ok, GamePoolPid} = game_pool_sup:start_link(),
+    io:format("Info start pool sup: ~p~n",[GamePoolPid]),
+    {noreply, State#state{game_pool=GamePoolPid}};
 handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
-    io:format("Matchmake < 2~n"),
+    %io:format("Matchmake < 2~n"),
     timer:send_after(5000, matchmake),
     {noreply, State};
 handle_info(matchmake, #state{q_size=QSize, in_queue=[P1, P2|T],
                               in_game=InGame, logged=Logged}=State) ->
-    io:format("Matchmake > 2~n"),
+    %io:format("Matchmake > 2~n"),
     InGame1 =  set_player_in_game(P1, InGame, Logged),
     InGame2 = set_player_in_game(P2, InGame1, Logged),
     timer:send_after(5000, matchmake),

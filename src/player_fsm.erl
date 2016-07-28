@@ -9,17 +9,20 @@
     game_pid :: pid()
 }).
 
-start([Player, GamePid]) ->
+start({Player, GamePid}) ->
     gen_fsm:start(?MODULE, [Player, GamePid], []).
 
-start_link([Player, GamePid]) ->
-    io:format("Player start link~n"),
-    gen_fsm:start_link(?MODULE, [Player, GamePid], []).
+start_link({Player, GamePid}) ->
+    io:format("=======player_fsm start link=======~n"),
+    gen_fsm:start_link(?MODULE, {Player, GamePid}, []).
 
-init([Player, GamePid]) ->
-    io:format("Creating player_fsm for player: ~p", [Player]),
-    {ok, test_state, #state{game_pid=GamePid}}; 
-init(S) -> io:format("WTF ~p~n", [S]).
+init({Player, GamePid}) ->
+    io:format("=======player_fsm init=======~n"),
+    io:format("PLAYER NAME: ~p~n", [Player]),
+    io:format("GAME PID: ~p~n", [GamePid]),
+    io:format("=============================~n"),
+    gen_fsm:send_event(GamePid, {register_player, Player, self()}),
+    {ok, test_state, #state{game_pid=GamePid}}.
 
 handle_event(Event, StateName, StateData) ->
     io:format("Handle Player Event. Unknown event: ~p in fsm_state: ~p~n", [Event, StateName]),

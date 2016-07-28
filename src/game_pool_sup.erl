@@ -18,5 +18,6 @@ init([]) ->
                     start => {game_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
+                    shutdown => infinity,
                     modules => [game_sup]}],
     {ok, {SupFlags, ChildSpecs}}.

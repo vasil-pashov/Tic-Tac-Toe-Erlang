@@ -11,7 +11,7 @@
 
 start(_StartType, _Args) ->
     io:format("Starting the app~n"),
-    tic_tac_toe_sup:start_link([gs]).
+    tic_tac_toe_sup:start_link().
 
 stop(_State) ->
     ok.

@@ -3,7 +3,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -15,22 +15,22 @@
 %% API functions
 %% ===================================================================
 
-start_link(ServName) ->
-    io:format("Starting link~n"),
-    supervisor:start_link(?MODULE, [ServName]).
+start_link() ->
+    io:format("========tic_tac_toe_sup starting link=============~n"),
+    supervisor:start_link(?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
-init([ServName]) ->
-    io:format("Init gs~n"),
-    SupFlags = #{strategy => one_for_all,
+init([]) ->
+    io:format("========tic_tac_toe_sup init starting game server========~n"),
+    SupFlags = #{strategy => one_for_one,
       intensity => 5,
       period => 10
     },
     ChildSpecs = [#{id => tic_tac_toe_game_app,
-                    start => {game_serv, start_link, [ServName]},
+                    start => {game_serv, start_link, []},
                     restart => permanent,
                     type => worker,
                     modules => [game_serv]

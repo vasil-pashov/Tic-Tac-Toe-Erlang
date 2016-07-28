@@ -1,20 +1,22 @@
 -module(player_sup).
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1]).
 
-start_link() ->
-    supervisor:start_link(?MODULE, []).
+start_link({_Players, _GamePid}=Args) ->
+    io:format("======player_sup start link=========~n"),
+    supervisor:start_link(?MODULE, Args).
 
-init([]) ->
-    SupFlags = #{strategy => simple_one_for_one,
+init({Players, GamePid}) ->
+    io:format("======player_sup init===============~n"),
+    SupFlags = #{strategy => one_for_one,
                  intesity => 5,
                  period => 20},
     ChildSpecs = [#{
-        id => player,
-        start => {player_fsm, start_link, []},
+        id => Name,
+        start => {player_fsm, start_link, [{Name, GamePid}]},
         restart => permanent,
         type => worker,
-        modules => [player_fsm]}],
+        modules => [player_fsm]} || Name <- Players],
     {ok, {SupFlags, ChildSpecs}}.

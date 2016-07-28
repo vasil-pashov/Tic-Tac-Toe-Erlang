@@ -16,19 +16,22 @@
     draws = 0 :: integer()
 }).
 
--export([start_link/1]).
+-export([start_link/0]).
 
 -export([init/1, handle_call/3, handle_info/2, handle_cast/2,
          code_change/3, terminate/2]).
 
-start_link([ServName]) ->
-    gen_server:start_link({local, ServName}, ?MODULE, [], []).
+start_link() ->
+    io:format("=======game_serv start link=================~n"),
+    gen_server:start_link({local, gs}, ?MODULE, [], []).
 
-init(GamePoolPid) ->
-    io:format("Game server started~n"),
+init([]) ->
+    io:format("=======game_serv game server init===========~n"),
+    io:format("SERVR PID: ~p~n", [self()]),
+    io:format("============================================~n"),
     self() ! matchmake,
     self() ! start_pool_sup,
-    {ok, #state{game_pool=GamePoolPid}}.
+    {ok, #state{}}.
 
 handle_call({login, Username}, _From, #state{logged=Logged} = S) when is_binary(Username) ->
     io:format("~p~n", [S]),
@@ -65,7 +68,9 @@ handle_cast(_Msg, _State) ->
 
 handle_info(start_pool_sup, State) ->
     {ok, GamePoolPid} = game_pool_sup:start_link(),
-    io:format("Info start pool sup: ~p~n",[GamePoolPid]),
+    io:format("======game_servv start pool sup==========~n"),
+    io:format("POOL SUP PID: ~p~n",[GamePoolPid]),
+    io:format("=========================================~n"),
     {noreply, State#state{game_pool=GamePoolPid}};
 handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
     %io:format("Matchmake < 2~n"),

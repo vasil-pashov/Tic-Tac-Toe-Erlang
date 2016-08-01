@@ -1,6 +1,10 @@
 -module(game_board).
 
--export([new/0, get/3, set/4]).
+-export([new/0, get/3, set/4, check_win/4, print/1]).
+-define(SIZE, 3).
+-define(RIGHT, 1).
+-define(LEFT, -1).
+-define(MAIN_DIAG_START, 1).
 
 new() -> lists:duplicate(3, lists:duplicate(3,0)).
 
@@ -24,7 +28,20 @@ set(Row, Col, Mark, Board) ->
         false -> {error, wrong_coords}
     end.
 
-win(Mark, Row, Col, Board) -> ok.
+check_win(Row, Col, Mark, Board) -> 
+    WinRow = check_row_win(Row, Mark, Board),
+    WinCol = check_col_win(Col, Mark, Board),
+    WinDiag = check_diagonals_win(Row, Col, Mark, Board),
+    WinRow or WinCol or WinDiag.
+
+print(Board) ->
+    lists:foreach(fun(Row) ->
+                          lists:foreach(fun(Element) ->
+                                                io:format("~p ", [Element])
+                                        end, Row),
+                        io:format("~n")
+                  end, Board).
+                          
 
         
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -42,10 +59,21 @@ check_col_win(ColNumber, Mark, [H|T]) ->
         false -> false
     end.
 
-check_diag_win(_Mark, [], _El, _Direction) -> true;
-check_diag_win(Mark, [H|T], El, Direction) ->
-    case lists:nth(El, H) =:= Mark of 
-        true -> check_diag_win(Mark, T, El + Direction, Direction);
+check_diagonals_win(Row, Col, Mark, Board) ->
+    MainWin = case is_on_main_diagonal(Row, Col) of
+                  false -> false;
+                  true -> check_diag_win(?MAIN_DIAG_START, Mark, Board, ?RIGHT)
+              end,
+    SecondaryWin = case is_on_secondary_diagonal(Row, Col) of
+                       false -> false;
+                       true -> check_diag_win(?SIZE, Mark, Board, ?LEFT)
+                   end,
+    MainWin or SecondaryWin.
+
+check_diag_win(_Position, _Mark, [], _Direction) -> true;
+check_diag_win(Position, Mark, [H|T], Direction) ->
+    case lists:nth(Position, H) =:= Mark of 
+        true -> check_diag_win(Position + Direction, Mark, T, Direction);
         false -> false
     end.
     
@@ -55,6 +83,18 @@ check_lists_for_win(_List, _Mark) -> false.
 is_in_range({Row, Col}) -> is_in_range(Row) andalso is_in_range(Col);
 is_in_range(El) ->
     El >= 1 andalso El =< 3.
+
+is_on_main_diagonal(Row, Col) ->
+    case Row =:= Col of
+        true -> true;
+        false -> false
+    end.
+
+is_on_secondary_diagonal(Row, Col) ->
+    case Row + Col =:= ?SIZE + 1 of
+        true -> true;
+        false -> false
+    end.
 
 is_free(El) ->
     case El of

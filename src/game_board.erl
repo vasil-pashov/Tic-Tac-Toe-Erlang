@@ -1,6 +1,6 @@
 -module(game_board).
 
--export([new/0, get/3, set/4, check_win/4, print/1]).
+-export([new/0, get/3, set/4, check_win/5, print/1]).
 -define(SIZE, 3).
 -define(RIGHT, 1).
 -define(LEFT, -1).
@@ -28,11 +28,17 @@ set(Row, Col, Mark, Board) ->
         false -> {error, wrong_coords}
     end.
 
-check_win(Row, Col, Mark, Board) -> 
+check_win(Row, Col, Mark, Board, MovesMade) -> 
     WinRow = check_row_win(Row, Mark, Board),
     WinCol = check_col_win(Col, Mark, Board),
     WinDiag = check_diagonals_win(Row, Col, Mark, Board),
-    WinRow or WinCol or WinDiag.
+    Win = WinRow or WinCol or WinDiag,
+    case Win =:= false andalso MovesMade =:= 9 of
+        true -> draw;
+        false -> Win
+    end.
+        
+
 
 print(Board) ->
     lists:foreach(fun(Row) ->

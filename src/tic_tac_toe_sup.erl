@@ -30,7 +30,7 @@ init([]) ->
       period => 10
     },
     ChildSpecs = [#{id => tic_tac_toe_game_app,
-                    start => {game_serv, start_link, []},
+                    start => {game_serv, start_link, [self()]},
                     restart => permanent,
                     type => worker,
                     modules => [game_serv]

@@ -11,10 +11,9 @@
   {modules, [
              game_serv,
              tic_tac_toe_sup,
-             game_pool_sup,
-             game_sup,
-             player_sup,
-             tic_tac_toe_sup
+             games_sup,
+             players_sup,
+             game_board
             ]},
   {mod, { tic_tac_toe_app, []}},
   {env, []}

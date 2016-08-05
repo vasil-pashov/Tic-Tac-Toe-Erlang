@@ -13,7 +13,8 @@
              tic_tac_toe_sup,
              games_sup,
              players_sup,
-             game_board
+             game_board,
+             player
             ]},
   {mod, { tic_tac_toe_app, []}},
   {env, []}

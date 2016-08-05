@@ -2,11 +2,11 @@
 -behaviour(gen_fsm).
 
 %async
--export([make_move/2, wait_oponent/2]).
+-export([wait_oponent/2]).
 %sync
--export([choose_mark/3]).
+-export([make_move/3, choose_mark/3]).
 %start
--export([start/1, start_link/1]).
+-export([start/2, start_link/2]).
 %gen
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3,
         terminate/3, code_change/4]).
@@ -17,30 +17,28 @@
     player_name
 }).
 
-start({Player, GamePid}) ->
+start(Player, GamePid) ->
     gen_fsm:start(?MODULE, [Player, GamePid], []).
 
-start_link({Player, GamePid}) ->
+start_link(Player, GamePid) ->
     io:format("GEN_FSM PLAYER =======player_fsm start link=======~n"),
-    gen_fsm:start_link(?MODULE, {Player, GamePid}, []).
+    gen_fsm:start_link(?MODULE, [Player, GamePid], []).
 
 wait_oponent(game_end, State) ->
     {next_state, new_game, State};
 wait_oponent(make_move, State) ->
     {next_state, make_move, State}.
 
-make_move({make_move, Row, Col}, #state{game_pid=GamePid,
+make_move({make_move, Row, Col}, _From, #state{game_pid=GamePid,
                                        player_mark=Mark,
                                        player_name=Player}=State) ->
     case gen_fsm:sync_send_event(GamePid, {move, Row, Col, Mark, Player}) of
-        game_end -> {next_state, new_game, State};
-        continue -> {next_state, wait_oponent, State};
-        {error, ErrorMsg} ->
-            io:format("GEN_FSM PLAYER ~p~n", [ErrorMsg]),
-            {next_state, make_move, State}
+        game_end -> {reply,{ok, game_end}, new_game, State};
+        continue -> {reply, {ok, continue}, wait_oponent, State};
+        {error, ErrorMsg} -> {reply, {error, ErrorMsg}, make_move, State}
     end.
 
-choose_mark({set_mark, Mark}, _From, #state{game_pid=Server,
+choose_mark({register_mark, Mark, Player}, _From, #state{game_pid=Server,
                                            player_name=Player}=State) ->
     case gen_fsm:sync_send_event(Server, {register_mark, Mark, Player}) of
         {error, taken} ->
@@ -60,10 +58,11 @@ choose_mark({set_mark, Mark}, _From, #state{game_pid=Server,
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% GENERIC PART %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-init({Player, GamePid}) ->
+init([Player, GamePid]) ->
     io:format("GEN_FSM PLAYER =======player_fsm init=======~n"),
     io:format("GEN_FSM PLAYER PLAYER NAME: ~p~n", [Player]),
     io:format("GEN_FSM PLAYER GAME PID: ~p~n", [GamePid]),
+    io:format("GEN_FSM PLAYER OWN PID: ~p.~n", [self()]),
     io:format("GEN_FSM PLAYER =============================~n"),
     gen_fsm:send_event(GamePid, {register_player, Player, self()}),
     {ok, choose_mark, #state{game_pid=GamePid, player_name=Player}}.

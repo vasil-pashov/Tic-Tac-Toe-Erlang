@@ -19,7 +19,7 @@
 
 -define(GAMES_SUP_SPEC(Args), #{
           id => games_sup,
-          start => {games_sup, start_link, [Args]},
+          start => {games_sup, start_link, Args},
           restart => permanent,
           type => supervisor,
           shutdown => infinity,
@@ -28,7 +28,7 @@
 
 -define(PLAYERS_SUP_SPEC(Args), #{
           id => players_sup,
-          start => {players_sup, start_link, [Args]},
+          start => {players_sup, start_link, Args},
           restart => permanent,
           type => supervisor,
           shutdown => infinity,
@@ -78,7 +78,7 @@ handle_call(get_state, _From, State) ->
 %=======Start Game for testing purpose==================
 handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid}=State) ->
     io:format("GAME SERVER GS: start game with players ~p ~p. Sup: ~p~n",[Player1, Player2, GamePoolPid]),
-    supervisor:start_child(GamePoolPid, [[<<"MyGame">>, Player1, Player2, self()]]),
+    supervisor:start_child(GamePoolPid, [<<"MyGame">>, Player1, Player2]),
     {reply, {ok, State}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
@@ -87,12 +87,12 @@ handle_cast(_Msg, _State) ->
     {noreply, _State}.
 
 handle_info({spawn_supervisors, FatherSupPid}, State) ->
-    io:format("GAME SERVER SPAWN GAMES SUPERVISOR~n"),
-    GamesSupPid = spawn_sup(FatherSupPid, ?GAMES_SUP_SPEC(self())),
-    io:format("GAME SERVER GAMES SUPERVISOR PID: ~p~n",[GamesSupPid]),
     io:format("GAME SERVER SPAWN PLAYERS SUPERVISOR~n"),
-    PlayersSupPid = spawn_sup(FatherSupPid, ?PLAYERS_SUP_SPEC(self())),
+    PlayersSupPid = spawn_sup(FatherSupPid, ?PLAYERS_SUP_SPEC([])),
     io:format("GAME SERVER PLAYERS SUPERVISOR PID: ~p~n",[PlayersSupPid]),
+    io:format("GAME SERVER SPAWN GAMES SUPERVISOR~n"),
+    GamesSupPid = spawn_sup(FatherSupPid, ?GAMES_SUP_SPEC([self(), PlayersSupPid])),
+    io:format("GAME SERVER GAMES SUPERVISOR PID: ~p~n",[GamesSupPid]),
     {noreply, State#state{games_sup=GamesSupPid, players_sup=PlayersSupPid}};
 handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
     %io:format("GAME SERVER Matchmake < 2~n"),
@@ -106,7 +106,7 @@ handle_info(matchmake, #state{q_size=QSize, in_queue=[P1, P2|T],
     timer:send_after(5000, matchmake),
     {noreply, State#state{in_queue=T, in_game=InGame2, q_size=QSize-2}};
 handle_info(Msg, _State) ->
-    io:format("GAME SERVER MSG: ~p", [Msg]),
+    io:format("GAME SERVER MSG: ~p~n", [Msg]),
     {noreply, _State}.
 
 terminate(normal, _State) ->

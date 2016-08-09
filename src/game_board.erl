@@ -21,14 +21,22 @@ set(Row, Col, Mark, Board) ->
             {PrefixCol, [CurrentEl|TailCol]} = lists:split(Col-1, CurrentRow),
             case is_free(CurrentEl) of
                 true ->  
-                    NewRow = lists:merge(PrefixCol, [Mark|TailCol]),
-                    {ok, lists:merge(PrefixRow, [NewRow|TailRow])};
+                    NewRow = PrefixCol ++ [Mark|TailCol],
+                    NewBoard = PrefixRow ++ [NewRow|TailRow],
+                    {ok, NewBoard};
                 false -> {error, not_free}
             end;
         false -> {error, wrong_coords}
     end.
 
 check_win(Row, Col, Mark, Board, MovesMade) -> 
+    io:format("GAME BOARD CHECK WIN~n"),
+    io:format("GAME BOARD ROW: ~p~n", [Row]),
+    io:format("GAME BOARD COL: ~p~n", [Col]),
+    io:format("GAME BOARD MARK: ~p~n", [Mark]),
+    io:format("GAME BOARD MOVES: ~p~n", [MovesMade]),
+    io:format("GAME BOARD BOARD: ~n"),
+    print(Board),
     WinRow = check_row_win(Row, Mark, Board),
     WinCol = check_col_win(Col, Mark, Board),
     WinDiag = check_diagonals_win(Row, Col, Mark, Board),

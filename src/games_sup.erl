@@ -1,13 +1,13 @@
 -module(games_sup).
 -behaviour(supervisor).
 
--export([start_link/2]).
+-export([start_link/1]).
 -export([init/1]).
 
-start_link(Server, PlayersSup) ->
-    supervisor:start_link(?MODULE, [Server, PlayersSup]).
+start_link(Server) ->
+    supervisor:start_link(?MODULE, [Server]).
 
-init([Server, PlayersSup]) -> 
+init([Server]) -> 
     io:format("GAMES SUP START SUPERVISOR~n"),
     SupFlags = #{
         strategy => simple_one_for_one,
@@ -16,7 +16,7 @@ init([Server, PlayersSup]) ->
     },
     ChildSpecs = [#{
         id => games_sup,
-        start => {game_fsm, start_link, [Server, PlayersSup]},
+        start => {game_fsm, start_link, [Server]},
         restart => transient,
         type => worker,
         modules => [game_fsm]

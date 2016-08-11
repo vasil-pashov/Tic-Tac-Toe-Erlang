@@ -16,7 +16,7 @@ init([]) ->
     },
     ChildSpecs = [#{
         id => players_sup,
-        start => {player_fsm, start_link, []},
+        start => {player_fsm, start, []},
         restart => transient,
         type => worker,
         modules => [player_fsm]

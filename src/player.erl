@@ -1,6 +1,6 @@
 -module(player).
 
--export([choose_mark/2, make_move/3]).
+-export([choose_mark/2, make_move/3, new_game/2]).
 
 choose_mark(PlayerPid, Mark) ->
     case gen_fsm:sync_send_event(PlayerPid, {register_mark, Mark}) of
@@ -17,4 +17,7 @@ make_move(PlayerPid, Row, Col) ->
         {error, ErrorMsg} -> io:format("ERROR MOVE NOT ACCEPTED. ERROR: ~p.~n", [ErrorMsg])
     end.
 
-
+new_game(PlayerPid, yes) ->
+    gen_fsm:send_event(PlayerPid, accept);
+new_game(PlyerPid, no) ->
+    gen_fsm:send_event(PlyerPid, decline).

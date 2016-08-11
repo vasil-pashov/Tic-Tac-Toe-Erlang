@@ -2,11 +2,11 @@
 -behaviour(gen_fsm).
 
 %async
--export([wait_players/2]).
+-export([wait_players/2, wait_new_game/2]).
 %sync
 -export([wait_move/3, register_mark/3]).
 %start
--export([start/5, start_link/5]).
+-export([start/2, start_link/2]).
 %gen
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3,
         terminate/3, code_change/4]).
@@ -14,13 +14,13 @@
 -record(state, {
     game_name,
     players = maps:new() :: map(),
-    players_sup_pid :: pid(),
     server_pid :: pid(),
-    logged_players = 0 :: integer(),
-    marks_registered = 0 :: integer(),
     current_player,
     board = game_board:new(),
-    moves_made = 0 :: integer()
+    moves_made = 0 :: integer(),
+    logged_players = 0 :: integer(),
+    marks_registered = 0 :: integer(),
+    new_game_confirmed = 0 :: integer()
 }).
 
 -record(player_data, {
@@ -28,17 +28,41 @@
     mark = undefined
 }).
 
-start(Server, PlayersSup, GameName, P1, P2) ->
-    gen_fsm:start(?MODULE, [Server, PlayersSup, GameName, P1, P2], []).
+start(Server, GameName) ->
+    gen_fsm:start(?MODULE, [Server, GameName], []).
 
-start_link(Server, PlayersSup, GameName, P1, P2) ->
-    io:format("GEN_FSM GAME =======game_fsm start link for game==============~n"),
+start_link(Server, GameName) ->
+    %io:format("GEN_FSM GAME =======game_fsm start link for game==============~n"),
     %GAME PROCCESS NAME TO BE REMOVED AFTER TESTING
-    gen_fsm:start_link({local, game}, ?MODULE, [Server, PlayersSup, GameName, P1, P2], []).
+    gen_fsm:start_link(?MODULE, [Server, GameName], []).
+
+wait_new_game({accept, PlayerName}, #state{new_game_confirmed=NewGame,
+                                          players=Players}=State) ->
+    case NewGame + 1 of
+        1 -> {next_state, wait_new_game, State#state{new_game_confirmed=NewGame+1}};
+        2 -> 
+            {ok, PlayerData} = maps:find(PlayerName, Players),
+            OtherPlayerName = switch_players(Players, PlayerName),
+            {ok, OtherPlayerData} = maps:find(OtherPlayerName, Players),
+            Turn = random:uniform(2),
+            CurrentPlayer = case Turn of
+                                1 -> PlayerName;
+                                2 -> OtherPlayerName
+                            end,
+            io:format("~p~n ~p~n", [PlayerData, OtherPlayerData]),
+            gen_fsm:send_event(PlayerData#player_data.pid, {start_game, Turn}),
+            gen_fsm:send_event(OtherPlayerData#player_data.pid, {start_game, 3 - Turn}),
+            io:format("GAME FSM START NEW GAME~n"),
+            {next_state, wait_move, State#state{current_player=CurrentPlayer,
+                                               new_game_confirmed=0}}
+    end;
+wait_new_game(decline, State) ->
+    {stop, normal, State}.
 
 wait_players({register_player, PlayerName, PlayerPid}, #state{players=Players0,
                                                 logged_players=Logged}=State) ->
-    io:format("GEN_FSM GAME ==============WAITIN FOR PLAYERS======================~n"),
+    io:format("GAME FSM REGISTER PLAYER: ~p~n",[PlayerName]),
+    erlang:monitor(process, PlayerPid),
     Players = case maps:find(PlayerName, Players0) of
         {ok, Value} ->
                 io:format("GEN_FSM GAME UPDATING PLAYER PID FOR PLAYER: ~p~n", [PlayerName]),
@@ -138,21 +162,16 @@ wait_move({make_move, Row, Col, Mark, Player}, _From, #state{current_player=Curr
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% GENERIC PART %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-init([Server, PlayersSup, GameName, P1, P2]) ->
-    io:format("GEN_FSM GAME =======game_fsm init==============================~n"),
+init([Server, GameName]) ->
+    io:format("~nGEN_FSM GAME =======INIT GAME FSM==============================~n"),
     io:format("GEN_FSM GAME GAME NAME: ~p~n", [GameName]),
-    io:format("GEN_FSM GAME PLAYER1: ~p~n", [P1]),
-    io:format("GEN_FSM GAME PLAYER2: ~p~n", [P2]),
     io:format("GEN_FSM GAME SELF: ~p~n", [self()]),
-    io:format("GEN_FSM GAME SUP PID: ~p~n", [PlayersSup]),
-    io:format("GEN_FSM GAME ==================================================~n"),
+    io:format("GEN_FSM GAME =======END INIT GAME FSM==============================~n~n"),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
                 erlang:unique_integer()),
-    self() ! {start_players, [P1, P2]},
     {ok, wait_players, #state{game_name=GameName,
-                              server_pid=Server,
-                              players_sup_pid=PlayersSup}}.
+                              server_pid=Server}}.
 
 handle_event(stop, _State, Data) ->
     {stop, normal, Data};
@@ -164,14 +183,6 @@ handle_sync_event(Event, _From, StateName, StateData) ->
     io:format("GEN_FSM GAME Handle sync. Unknown event: ~p in fsm_state: ~p~n", [Event, StateName]),
     {next_state, test_state, StateData}.
 
-handle_info({start_players, Players}, wait_players, #state{players_sup_pid=PlayersSupPid}=State) ->
-    %NAMING THE PLAYER PROCCESS TO REMOVE AFTER TESTING
-    lists:foreach(fun(Player) -> 
-                          supervisor:start_child(PlayersSupPid, [Player,
-                                                                 self(),
-                                                                 erlang:binary_to_atom(Player, utf8)])
-                  end, Players),
-    {next_state, wait_players, State};
 handle_info(Info, StateName, State) ->
     io:format("GEN_FSM GAME Unknown info: ~p, in state: ~p", [Info, StateName]),
     {next_state, test_state, State}.

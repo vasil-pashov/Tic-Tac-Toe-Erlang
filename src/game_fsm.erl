@@ -62,7 +62,6 @@ wait_new_game(decline, State) ->
 wait_players({register_player, PlayerName, PlayerPid}, #state{players=Players0,
                                                 logged_players=Logged}=State) ->
     io:format("GAME FSM REGISTER PLAYER: ~p~n",[PlayerName]),
-    erlang:monitor(process, PlayerPid),
     Players = case maps:find(PlayerName, Players0) of
         {ok, Value} ->
                 io:format("GEN_FSM GAME UPDATING PLAYER PID FOR PLAYER: ~p~n", [PlayerName]),
@@ -118,8 +117,9 @@ register_mark({register_mark, Mark, PlayerName}, _From, #state{players=Players,
             end
     end.
 
-wait_move({make_move, Row, Col, Mark, Player}, _From, #state{current_player=CurrentPlayer,
+wait_move({make_move, Row, Col, Player}, _From, #state{current_player=CurrentPlayer,
                                                        board=Board,
+                                                       server_pid=Server,
                                                        moves_made=MovesMade0,
                                                        players=Players}=State) -> 
     case CurrentPlayer =:= Player of
@@ -127,6 +127,8 @@ wait_move({make_move, Row, Col, Mark, Player}, _From, #state{current_player=Curr
             io:format("GEN_FSM GAME PLAYER: ~p CANNOT MOVE. NOT YOUR TURN.", [Player]),
             {reply, {error, not_your_turn}, wait_move, State};
         true -> 
+            {ok, PlayerData} = maps:find(Player, Players),
+            Mark = PlayerData#player_data.mark,
             case game_board:set(Row, Col, Mark, Board) of
                 {error, ErrorMsg} ->
                     io:format("GEN_FSM GAME PLAYER: ~p. MOVE ERROR: ~p~n", [Player, ErrorMsg]),
@@ -143,10 +145,12 @@ wait_move({make_move, Row, Col, Mark, Player}, _From, #state{current_player=Curr
                         win -> 
                             io:format("GEN_FSM GAME PLAYER: ~p WINS!!!~n", [Player]),
                             gen_fsm:send_event(OtherPlayerPid, game_end),
+                            gen_server:cast(Server, {loose, NextPlayer}),
                             {reply, game_end, wait_new_game, State#state{board=game_board:new()}};
                         draw -> 
                             io:format("GEN_FSM GAME GAME IS DRAW~n"),
                             gen_fsm:send_event(OtherPlayerPid, game_end),
+                            gen_server:cast(Server, {draw, NextPlayer}),
                             {reply, game_end, wait_new_game, State#state{board=game_board:new()}};
                         continue ->
                             io:format("GEN_FSM GAME CONTINUE NEXT MOVE~n"),

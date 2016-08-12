@@ -11,7 +11,7 @@
 }).
 
 -record(user, {
-    username :: binary(),
+    player :: binary(),
     wins = 0 :: integer(),
     losses = 0 :: integer(),
     draws = 0 :: integer(),
@@ -35,7 +35,7 @@
           restart => permanent,
           type => supervisor,
           shutdown => infinity,
-          modules => [games_sup]
+          modules => [players_sup]
 }).
 
 -export([start_link/1]).
@@ -44,14 +44,13 @@
          code_change/3, terminate/2]).
 
 start_link(SupPid) ->
-    io:format("GAME SERVER =======game_serv start link=================~n"),
     gen_server:start_link({local, gs}, ?MODULE, [SupPid], []).
 
 init([SupPid]) ->
-    io:format("GAME SERVER =======game_serv game server init===========~n"),
+    io:format("GAME SERVER =======GAME SERVER INIT===========~n"),
     io:format("GAME SERVER SERVER PID: ~p~n", [self()]),
     io:format("GAME SERVER SUPERVISOR PID: ~p~n", [SupPid]),
-    io:format("GAME SERVER ============================================~n"),
+    io:format("GAME SERVER =======GAME SERVER END INIT=======~n"),
     self() ! matchmake,
     self() ! {spawn_supervisors, SupPid},
     {ok, #state{}}.
@@ -61,7 +60,7 @@ handle_call({login, Username}, _From, #state{players=Players} = S) when is_binar
     case maps:is_key(Username, S#state.players) of
         true -> {reply, {err, user_logged}, S};
         false ->
-            User=#user{username=Username},
+            User=#user{player=Username},
             {reply, {ok, logged}, S#state{players=maps:put(Username, User, Players)}}
     end;
 handle_call({logout, _Username}, _From, #state{players=_Players}) ->
@@ -84,16 +83,18 @@ handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid,
                                                          players_sup=PlayersSup,
                                                          players=Players,
                                                          players_proc=PProc}=State) ->
-    io:format("GAME SERVER GS: start game with players ~p ~p. Sup: ~p~n",[Player1, Player2, GamePoolPid]),
+    io:format("GAME SERVER GS: start game with players ~p ~p. Sup: ~p~n",[Player1,
+                                                                          Player2,
+                                                                          GamePoolPid]),
     {ok, Game} = supervisor:start_child(GamePoolPid, [<<"MyGame">>]),
-    {ok, P1} = supervisor:start_child(PlayersSup, []),
-    {ok, P2} = supervisor:start_child(PlayersSup, []),
+    {ok, P1} = supervisor:start_child(PlayersSup, [Player1]),
+    {ok, P2} = supervisor:start_child(PlayersSup, [Player2]),
     PProc1 = maps:put(P1, Player1, PProc),
-    PProc2 = maps:put(P2, Player1, PProc1),
-    Players1 = maps:put(Player1, #user{username=Player1,
+    PProc2 = maps:put(P2, Player2, PProc1),
+    Players1 = maps:put(Player1, #user{player=Player1,
                                        status=in_game,
                                        game=Game}, Players),
-    Players2 = maps:put(Player1, #user{username=Player2,
+    Players2 = maps:put(Player2, #user{player=Player2,
                                        status=in_game,
                                        game=Game}, Players1),
     {reply, {ok, State}, State#state{players=Players2,
@@ -101,21 +102,40 @@ handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid,
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
-handle_cast({forward_to_game, PlayerName, PlayerPid, Command}, {players=Players}=State) ->
-    PlayerData = maps:find(PlayerName, Players),
-    Game = PlayerData#user.game,
-    gen_fsm:send_event(Game, {Command, PlayerPid}),
-    {noreply, State};
+handle_cast({win, Player}, #state{players=Players}=State) ->
+    io:format("~nSAVE WIN FOR: ~p~n", [Player]),
+    {ok, PlayerData} = maps:find(Player, Players),
+    Wins = PlayerData#user.wins,
+    Players1 = maps:update(Player, PlayerData#user{wins=Wins+1}, Players),
+    {noreply, State#state{players=Players1}};
+handle_cast({loose, Player}, #state{players=Players}=State) ->
+    io:format("~nSAVE LOSE FOR: ~p~n", [Player]),
+    {ok, PlayerData} = maps:find(Player, Players),
+    Losses = PlayerData#user.losses,
+    Players1 = maps:update(Player, PlayerData#user{losses=Losses+1}, Players),
+    {noreply, State#state{players=Players1}};
+handle_cast({draws, Player}, #state{players=Players}=State) ->
+    io:format("~nSAVE DRAW FOR: ~p~n", [Player]),
+    {ok, PlayerData} = maps:find(Player, Players),
+    {ok, PlayerData} = maps:find(Player, Players),
+    Draws = PlayerData#user.draws,
+    Players1 = maps:update(Player, PlayerData#user{draws=Draws+1}, Players),
+    {noreply, State#state{players=Players1}};
 handle_cast(_Msg, _State) ->
     {noreply, _State}.
 
+handle_info({get_game_info, PlayerPid}, #state{players=Players,
+                                              players_proc=PProc}=State) ->
+    io:format("GET GAME INFO~p~n", [PProc]),
+    {ok, PlayerName} = maps:find(PlayerPid, PProc),
+    {ok, PlayerData} = maps:find(PlayerName, Players),
+    gen_fsm:send_event(PlayerPid, {data, PlayerName, PlayerData#user.game}),
+    {noreply, State};
 handle_info({spawn_supervisors, FatherSupPid}, State) ->
-    io:format("GAME SERVER SPAWN PLAYERS SUPERVISOR~n"),
-    {ok, PlayersSupPid} = supervisor:start_child(FatherSupPid, ?PLAYERS_SUP_SPEC([])),
-    io:format("GAME SERVER PLAYERS SUPERVISOR PID: ~p~n",[PlayersSupPid]),
-    io:format("GAME SERVER SPAWN GAMES SUPERVISOR~n"),
+    io:format("~n==========GAME SERVER SPAWN SUPERVISORS==========~n"),
+    {ok, PlayersSupPid} = supervisor:start_child(FatherSupPid, ?PLAYERS_SUP_SPEC([self()])),
     {ok, GamesSupPid} = supervisor:start_child(FatherSupPid, ?GAMES_SUP_SPEC([self()])),
-    io:format("GAME SERVER GAMES SUPERVISOR PID: ~p~n",[GamesSupPid]),
+    io:format("~n==========GAME SERVER END SPAWN SUPERVISORS======~n~n"),
     {noreply, State#state{games_sup=GamesSupPid, players_sup=PlayersSupPid}};
 handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
     %io:format("GAME SERVER Matchmake < 2~n"),

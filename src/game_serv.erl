@@ -5,7 +5,6 @@
     queue = queue:new(),
     q_size = 0 :: integer(),
     players = maps:new() :: map(),
-    players_proc = maps:new() :: map(),
     games_sup :: pid(),
     players_sup :: pid()
 }).
@@ -15,8 +14,7 @@
     wins = 0 :: integer(),
     losses = 0 :: integer(),
     draws = 0 :: integer(),
-    status = logged :: logged | in_queue | in_game,
-    game = undefined :: pid() | undefined
+    status = logged :: logged | in_queue | in_game
 }).
 
 
@@ -81,32 +79,22 @@ handle_call(get_state, _From, State) ->
 %=======Start Game for testing purpose==================
 handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid,
                                                          players_sup=PlayersSup,
-                                                         players=Players,
-                                                         players_proc=PProc}=State) ->
+                                                         players=_PlayersPlayers1}=State) ->
     io:format("GAME SERVER GS: start game with players ~p ~p. Sup: ~p~n",[Player1,
                                                                           Player2,
                                                                           GamePoolPid]),
-    {ok, Game} = supervisor:start_child(GamePoolPid, [<<"MyGame">>]),
-    {ok, P1} = supervisor:start_child(PlayersSup, [Player1]),
-    {ok, P2} = supervisor:start_child(PlayersSup, [Player2]),
-    PProc1 = maps:put(P1, Player1, PProc),
-    PProc2 = maps:put(P2, Player2, PProc1),
-    Players1 = maps:put(Player1, #user{player=Player1,
-                                       status=in_game,
-                                       game=Game}, Players),
-    Players2 = maps:put(Player2, #user{player=Player2,
-                                       status=in_game,
-                                       game=Game}, Players1),
-    {reply, {ok, State}, State#state{players=Players2,
-                                    players_proc=PProc2}};
+    supervisor:start_child(GamePoolPid, [<<"MyGame">>, PlayersSup, Player1, Player2]),
+    {reply, {ok, State}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
 handle_cast({win, Player}, #state{players=Players}=State) ->
-    io:format("~nSAVE WIN FOR: ~p~n", [Player]),
+    io:format("~nMAIN SERVER: SAVE WIN FOR: ~p~n", [Player]),
     {ok, PlayerData} = maps:find(Player, Players),
+    io:format("PLAYER DATA: ~p~n", [PlayerData]),
     Wins = PlayerData#user.wins,
     Players1 = maps:update(Player, PlayerData#user{wins=Wins+1}, Players),
+    io:format("~nSAVED WIN FOR: ~p~n", [Player]),
     {noreply, State#state{players=Players1}};
 handle_cast({loose, Player}, #state{players=Players}=State) ->
     io:format("~nSAVE LOSE FOR: ~p~n", [Player]),
@@ -117,23 +105,15 @@ handle_cast({loose, Player}, #state{players=Players}=State) ->
 handle_cast({draws, Player}, #state{players=Players}=State) ->
     io:format("~nSAVE DRAW FOR: ~p~n", [Player]),
     {ok, PlayerData} = maps:find(Player, Players),
-    {ok, PlayerData} = maps:find(Player, Players),
     Draws = PlayerData#user.draws,
     Players1 = maps:update(Player, PlayerData#user{draws=Draws+1}, Players),
     {noreply, State#state{players=Players1}};
 handle_cast(_Msg, _State) ->
     {noreply, _State}.
 
-handle_info({get_game_info, PlayerPid}, #state{players=Players,
-                                              players_proc=PProc}=State) ->
-    io:format("GET GAME INFO~p~n", [PProc]),
-    {ok, PlayerName} = maps:find(PlayerPid, PProc),
-    {ok, PlayerData} = maps:find(PlayerName, Players),
-    gen_fsm:send_event(PlayerPid, {data, PlayerName, PlayerData#user.game}),
-    {noreply, State};
 handle_info({spawn_supervisors, FatherSupPid}, State) ->
     io:format("~n==========GAME SERVER SPAWN SUPERVISORS==========~n"),
-    {ok, PlayersSupPid} = supervisor:start_child(FatherSupPid, ?PLAYERS_SUP_SPEC([self()])),
+    {ok, PlayersSupPid} = supervisor:start_child(FatherSupPid, ?PLAYERS_SUP_SPEC([])),
     {ok, GamesSupPid} = supervisor:start_child(FatherSupPid, ?GAMES_SUP_SPEC([self()])),
     io:format("~n==========GAME SERVER END SPAWN SUPERVISORS======~n~n"),
     {noreply, State#state{games_sup=GamesSupPid, players_sup=PlayersSupPid}};

@@ -2,8 +2,7 @@
 -behaviour(gen_fsm).
 
 %async
--export([wait_data/2,
-         wait_oponent/2,
+-export([wait_oponent/2,
          new_game/2,
          wait_order/2]).
 %sync
@@ -21,14 +20,11 @@
     player
 }).
 
-start(Server, Player) ->
-    %TO REMOVE NAMING
-    gen_fsm:start({local, binary_to_atom(Player, utf8)}, ?MODULE, [Server], []).
+start(Player, GamePid) ->
+    gen_fsm:start(?MODULE, [Player, GamePid], []).
 
-start_link(Server, Player) ->
-    %io:format("GEN_FSM PLAYER =======player_fsm start link=======~n"),
-    %TO REMOVE NAMING
-    gen_fsm:start_link({local, binary_to_atom(Player, utf8)}, ?MODULE, [Server], []).
+start_link(Player, GamePid) ->
+    gen_fsm:start_link(?MODULE, [Player, GamePid], []).
 
 new_game(accept, #state{game_pid=Game,
                        player=Player}=State) ->
@@ -39,9 +35,9 @@ new_game(decline, #state{game_pid=Game,
     gen_fsm:send_event(Game, decline),
     {next_state, wait_order, State}.
 
-wait_data({data, Player, Game}, State) ->
-    gen_fsm:send_event(Game, {register_player, Player, self()}),
-    {next_state, register_mark, State#state{player=Player, game_pid=Game}}.
+%wait_data({data, Player, Game}, State) ->
+%    gen_fsm:send_event(Game, {register_player, Player, self()}),
+%    {next_state, register_mark, State#state{player=Player, game_pid=Game}}.
 
 wait_order({start_game, Turn}, State) ->
     case Turn of
@@ -71,7 +67,7 @@ make_move({make_move, Row, Col}, _From, #state{game_pid=Game,
 
 register_mark({register_mark, Mark}, _From, #state{player=Player,
                                            game_pid=Game}=State) ->
-    io:format("PLAYER FSM REGISTER MARK~n"),
+    io:format("PLAYER FSM REGISTER MARK: ~p~n", [Game]),
     case gen_fsm:sync_send_event(Game, {register_mark, Mark, Player}) of
         {error, ErrorMsg} ->
             io:format("GEN_FSM PLAYER MARK ERROR: ~p~n", [ErrorMsg]),
@@ -90,14 +86,14 @@ register_mark({register_mark, Mark}, _From, #state{player=Player,
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% GENERIC PART %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-init([Server]) ->
+init([Player, GamePid]) ->
     io:format("~nGEN_FSM PLAYER =======INIT PLAYER FSM=======~n"),
-    io:format("GEN_FSM PLAYER OWN PID: ~p.~n", [self()]),
+    io:format("GEN_FSM PLAYER OWN PID: ~p ~p.~n", [self(), Player]),
+    erlang:register(binary_to_atom(Player, utf8), self()),
     %gen_fsm:send_event(GamePid, {register_player, Player, self()}),
-    {Player, GamePid} = Server ! {get_game_info, self()},
+    %{Player, GamePid} = Server ! {get_game_info, self()},
     io:format("GEN_FSM PLAYER =======END INIT PLAYER FSM=======~n~n"),
-    {ok, wait_data, #state{player=Player,
-                              game_pid=GamePid}}.
+    {ok, register_mark, #state{player=Player, game_pid=GamePid}}.
 
 handle_event(stop, _StateName, StateData) ->
     {stop, normal, StateData};

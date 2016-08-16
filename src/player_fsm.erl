@@ -2,11 +2,11 @@
 -behaviour(gen_fsm).
 
 %async
--export([wait_oponent/2,
+-export([wait_opponent/2,
          new_game/2,
          wait_order/2]).
 %sync
--export([wait_oponent/3,
+-export([wait_opponent/3,
          register_mark/3,
          make_move/3]).
 %start
@@ -46,22 +46,22 @@ wait_order({start_game, Turn}, State) ->
             {next_state, make_move, State};
         2 -> 
             io:format("PLAYER FSM PLAYER: ~p IS SECOND~n", [self()]),
-            {next_state, wait_oponent, State}
+            {next_state, wait_opponent, State}
     end.
 
-wait_oponent(make_move, State) ->
+wait_opponent(make_move, State) ->
     {next_state, make_move, State};
-wait_oponent(game_end, State) ->
+wait_opponent(game_end, State) ->
     {next_state, new_game, State}.
 
-wait_oponent({make_move, _Row, _Col}, _From, State) ->
-    {reply, {error, not_your_turn}, wait_oponent, State}.
+wait_opponent({make_move, _Row, _Col}, _From, State) ->
+    {reply, {error, not_your_turn}, wait_opponent, State}.
 
 make_move({make_move, Row, Col}, _From, #state{game_pid=Game,
                                        player=Player}=State) ->
     case gen_fsm:sync_send_event(Game, {make_move, Row, Col, Player}) of
         game_end -> {reply,{ok, game_end}, new_game, State};
-        continue -> {reply, {ok, continue}, wait_oponent, State};
+        continue -> {reply, {ok, continue}, wait_opponent, State};
         {error, ErrorMsg} -> {reply, {error, ErrorMsg}, make_move, State}
     end.
 
@@ -79,7 +79,7 @@ register_mark({register_mark, Mark}, _From, #state{player=Player,
             {reply, {ok, mark_set}, make_move, State};
         {ok, mark_set, 2} ->
             io:format("PLAYER FSM PLAYER: ~p IS SECOND~n", [Player]),
-            {reply, {ok, mark_set}, wait_oponent, State}
+            {reply, {ok, mark_set}, wait_opponent, State}
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -90,11 +90,16 @@ init([Player, GamePid]) ->
     io:format("~nGEN_FSM PLAYER =======INIT PLAYER FSM=======~n"),
     io:format("GEN_FSM PLAYER OWN PID: ~p ~p.~n", [self(), Player]),
     erlang:register(binary_to_atom(Player, utf8), self()),
-    %gen_fsm:send_event(GamePid, {register_player, Player, self()}),
-    %{Player, GamePid} = Server ! {get_game_info, self()},
+    GamePid ! {register_player, Player, self()},
     io:format("GEN_FSM PLAYER =======END INIT PLAYER FSM=======~n~n"),
     {ok, register_mark, #state{player=Player, game_pid=GamePid}}.
 
+handle_event({next_state, mark}, _StateName, State) ->
+    {next_state, register_mark, State};
+handle_event({next_state, wait}, _StateName, State) ->
+    {next_state, wait_opponent, State};
+handle_event({next_state, move}, _StateName, State) ->
+    {next_state, make_move, State};
 handle_event(stop, _StateName, StateData) ->
     {stop, normal, StateData};
 handle_event(Event, StateName, StateData) ->

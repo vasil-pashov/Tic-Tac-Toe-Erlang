@@ -15,7 +15,7 @@
     game_name,
     players = maps:new() :: map(),
     server_pid :: pid(),
-    current_player,
+    current_player = undefined,
     board = game_board:new(),
     moves_made = 0 :: integer(),
     logged_players = 0 :: integer(),
@@ -171,11 +171,41 @@ handle_sync_event(Event, _From, StateName, StateData) ->
     io:format("GEN_FSM GAME Handle sync. Unknown event: ~p in fsm_state: ~p~n", [Event, StateName]),
     {next_state, test_state, StateData}.
 
-handle_info({'DOWN', _Ref, Type, Object, Info}, _StateName, State) ->
-    io:format("TYPE: ~p~n", [Type]),
-    io:format("OBJECT: ~p~n", [Object]),
-    io:format("Info: ~p~n", [Info]),
-    {next_state, test_state, State};
+handle_info({register_player, Player, Pid}, StateName, #state{players=Players0,
+                                                             current_player=Current}=State) ->
+    {ok, PlayerData} = maps:find(Player, Players0),
+    io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
+    case Pid =:= PlayerData#player_data.pid of
+        true ->
+            io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
+            {next_state, StateName, State};
+        false ->
+            NewData = PlayerData#player_data{pid=Pid},
+            Players1 = maps:update(Player, NewData, Players0),
+            io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
+            case PlayerData#player_data.mark =:= undefined orelse Current =:= udefined of
+                undefined ->
+                    io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
+                    gen_fsm:send_all_state_event(Pid, {next_state, mark});
+                _ ->
+                    io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
+                    case Current =:= Player of
+                        true ->
+                            io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
+                            gen_fsm:send_all_state_event(Pid, {next_state, move});
+                        false ->
+                            io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
+                            gen_fsm:send_all_state_event(Pid, {next_state, wait})
+                    end
+            end,
+            io:format("~n============HERE===============~n"),
+            {next_state, StateName, State#state{players=Players1}}
+    end;
+handle_info({'DOWN', _Ref, _Type, _Object, _Info}, StateName, State) ->
+    %io:format("TYPE: ~p~n", [Type]),
+    %io:format("OBJECT: ~p~n", [Object]),
+    %io:format("Info: ~p~n", [Info]),
+    {next_state, StateName, State};
 handle_info(Info, StateName, State) ->
     io:format("GEN_FSM GAME Unknown info: ~p, in state: ~p", [Info, StateName]),
     {next_state, test_state, State}.

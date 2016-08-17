@@ -17,7 +17,7 @@ init([Server]) ->
     ChildSpecs = [#{
         id => games_sup,
         start => {game_fsm, start_link, [Server]},
-        restart => transient,
+        restart => temporary,
         type => worker,
         modules => [game_fsm]
     }],

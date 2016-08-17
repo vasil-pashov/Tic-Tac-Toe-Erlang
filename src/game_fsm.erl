@@ -20,7 +20,7 @@
     moves_made = 0 :: integer(),
     logged_players = 0 :: integer(),
     marks_registered = 0 :: integer(),
-    new_game_confirmed = 0 :: integer()
+    new_game_confirmed = 0 :: list()
 }).
 
 -record(player_data, {
@@ -38,23 +38,20 @@ start_link(Server, GameName, PlayersSup, Player1, Player2) ->
 
 wait_new_game({accept, PlayerName}, #state{new_game_confirmed=NewGame,
                                           players=Players}=State) ->
-    case NewGame + 1 of
-        1 -> {next_state, wait_new_game, State#state{new_game_confirmed=NewGame+1}};
-        2 -> 
-            {ok, PlayerData} = maps:find(PlayerName, Players),
+    case length(NewGame) =:= 0 andalso lists:member(PlayerName, NewGame) =:= false of
+        true -> {next_state, wait_new_game, State#state{new_game_confirmed=[PlayerName|NewGame]}};
+        false -> 
             OtherPlayerName = switch_players(Players, PlayerName),
-            {ok, OtherPlayerData} = maps:find(OtherPlayerName, Players),
             Turn = random:uniform(2),
             CurrentPlayer = case Turn of
                                 1 -> PlayerName;
                                 2 -> OtherPlayerName
                             end,
-            io:format("~p~n ~p~n", [PlayerData, OtherPlayerData]),
-            gen_fsm:send_event(PlayerData#player_data.pid, {start_game, Turn}),
-            gen_fsm:send_event(OtherPlayerData#player_data.pid, {start_game, 3 - Turn}),
+            io:format("FIRST IS: ~p~n", [CurrentPlayer]),
             io:format("GAME FSM START NEW GAME~n"),
             {next_state, wait_move, State#state{current_player=CurrentPlayer,
-                                               new_game_confirmed=0}}
+                                               new_game_confirmed=[PlayerName|NewGame],
+                                               moves_made=0}}
     end;
 wait_new_game(decline, State) ->
     {stop, normal, State}.
@@ -75,21 +72,19 @@ register_mark({register_mark, Mark, PlayerName}, _From, #state{players=Players,
                     io:format("GEN_FSM GAME PLAYER: ~p MARK: ~p REGISTERD~n", [PlayerName, Mark]),
                     Turn = random:uniform(2),
                     OpponentName = switch_players(Players, PlayerName),
-                    {ok, OpponentData} = maps:find(OpponentName, Players),
                     CurrentPlayer = case Turn of
                         1 -> PlayerName;
                         2 -> OpponentName
                     end,
-                    gen_fsm:send_event(OpponentData#player_data.pid, {start_game, 3 - Turn}),
-                    {reply, {ok, mark_set, Turn}, wait_move,
-                                State#state{players=NewPlayers,
-                                            current_player=CurrentPlayer}};
+                    io:format("FIRST IS: ~p~n", [CurrentPlayer]),
+                    {reply, {ok, mark_set}, wait_move, State#state{players=NewPlayers,
+                                                                    current_player=CurrentPlayer,
+                                                                    marks_registered=Marks+1}};
                 Marks+1 < 2 ->
                     io:format("GEN_FSM GAME PLAYER: ~p MARK: ~p REGISTERD~n",
                               [PlayerName, Mark]),
-                    {reply, {ok, mark_set}, register_mark,
-                                State#state{players=NewPlayers,
-                                            marks_registered=Marks+1}}
+                    {reply, {ok, mark_set}, register_mark, State#state{players=NewPlayers,
+                                                                        marks_registered=Marks+1}}
             end
     end.
 
@@ -122,7 +117,8 @@ wait_move({make_move, Row, Col, Player}, _From, #state{current_player=CurrentPla
                             io:format("GEN_FSM GAME PLAYER: ~p WINS!!!~n", [Player]),
                             gen_fsm:send_event(OtherPlayerPid, game_end),
                             gen_server:cast(Server, {loose, NextPlayer}),
-                            {reply, game_end, wait_new_game, State#state{board=game_board:new()}};
+                            {reply, game_end, wait_new_game, State#state{board=game_board:new(),
+                                                                        new_game_confirmed=[]}};
                         draw -> 
                             io:format("GEN_FSM GAME GAME IS DRAW~n"),
                             gen_fsm:send_event(OtherPlayerPid, game_end),
@@ -130,7 +126,6 @@ wait_move({make_move, Row, Col, Player}, _From, #state{current_player=CurrentPla
                             {reply, game_end, wait_new_game, State#state{board=game_board:new()}};
                         continue ->
                             io:format("GEN_FSM GAME CONTINUE NEXT MOVE~n"),
-                            gen_fsm:send_event(OtherPlayerPid, make_move),
                             {reply, continue, wait_move, State#state{board=NewBoard,
                                                                       moves_made=MovesMade,
                                                                       current_player=NextPlayer}}
@@ -151,8 +146,6 @@ init([Server, GameName, PlayersSup, Player1, Player2]) ->
     Players0 = maps:new(),
     Players1 = maps:put(Player1, #player_data{pid=Pid1}, Players0),
     Players2 = maps:put(Player2, #player_data{pid=Pid2}, Players1),
-    erlang:monitor(process, Pid1),
-    erlang:monitor(process, Pid2),
     io:format("GEN_FSM GAME =======END INIT GAME FSM==============================~n~n"),
     random:seed(erlang:phash2([node()]),
                 erlang:monotonic_time(),
@@ -172,47 +165,40 @@ handle_sync_event(Event, _From, StateName, StateData) ->
     {next_state, test_state, StateData}.
 
 handle_info({register_player, Player, Pid}, StateName, #state{players=Players0,
-                                                             current_player=Current}=State) ->
+                                                             current_player=_Current,
+                                                             marks_registered=_Marks,
+                                                             new_game_confirmed=NewGame}=State) ->
     {ok, PlayerData} = maps:find(Player, Players0),
-    io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
     case Pid =:= PlayerData#player_data.pid of
         true ->
-            io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
             {next_state, StateName, State};
         false ->
             NewData = PlayerData#player_data{pid=Pid},
             Players1 = maps:update(Player, NewData, Players0),
-            io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
-            case PlayerData#player_data.mark =:= undefined orelse Current =:= udefined of
+            case PlayerData#player_data.mark of
                 undefined ->
-                    io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
                     gen_fsm:send_all_state_event(Pid, {next_state, mark});
                 _ ->
-                    io:format("~n+++++++++++++++++++++HERE ~p++++++++++++++++++~n", [StateName]),
-                    case Current =:= Player of
+                    case StateName =:= wait_new_game of
                         true ->
-                            io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
-                            gen_fsm:send_all_state_event(Pid, {next_state, move});
+                            case lists:member(Player, NewGame) of
+                                true -> gen_fsm:send_all_state_event(Pid, {next_state, in_game});
+                                false -> gen_fsm:send_all_state_event(Pid, {next_state, new_game})
+                            end;
                         false ->
-                            io:format("~n+++++++++++++++++++HERE ~p+++++++++++~n", [StateName]),
-                            gen_fsm:send_all_state_event(Pid, {next_state, wait})
+                            gen_fsm:send_all_state_event(Pid, {next_state, in_game})
                     end
             end,
-            io:format("~n============HERE===============~n"),
             {next_state, StateName, State#state{players=Players1}}
     end;
-handle_info({'DOWN', _Ref, _Type, _Object, _Info}, StateName, State) ->
-    %io:format("TYPE: ~p~n", [Type]),
-    %io:format("OBJECT: ~p~n", [Object]),
-    %io:format("Info: ~p~n", [Info]),
-    {next_state, StateName, State};
 handle_info(Info, StateName, State) ->
     io:format("GEN_FSM GAME Unknown info: ~p, in state: ~p", [Info, StateName]),
     {next_state, test_state, State}.
 
 code_change(_OldVsn, _StateName, _StateData, _Extra) -> ok.
 
-terminate(Reason, StateName, #state{players=Players}) ->
+terminate(Reason, StateName, #state{players=Players,
+                                   server_pid=Server}) ->
     io:format("GEN_FSM GAME ===========GAME FSM terminate===============~n"),
     io:format("GEN_FSM GAME STATE: ~p~n",[StateName]),
     io:format("GEN_FSM GAME REASON: ~p~n",[Reason]),
@@ -220,6 +206,7 @@ terminate(Reason, StateName, #state{players=Players}) ->
                          gen_fsm:send_all_state_event(Pid, stop),
                          Acc
                  end),
+    gen_server:cast(Server, {game_end, maps:keys(Players)}), 
     io:format("GEN_FSM GAME ============================================~n"),
     ok.
 

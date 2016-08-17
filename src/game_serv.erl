@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -record(state,{
-    queue = queue:new(),
+    queue = [] :: list(),
     q_size = 0 :: integer(),
     players = maps:new() :: map(),
     games_sup :: pid(),
@@ -14,7 +14,8 @@
     wins = 0 :: integer(),
     losses = 0 :: integer(),
     draws = 0 :: integer(),
-    status = logged :: logged | in_queue | in_game
+    status = logged :: logged | in_q | in_game,
+    game = undefined :: pid() | undefined
 }).
 
 
@@ -53,23 +54,24 @@ init([SupPid]) ->
     self() ! {spawn_supervisors, SupPid},
     {ok, #state{}}.
 
-handle_call({login, Username}, _From, #state{players=Players} = S) when is_binary(Username) ->
+handle_call({login, Player}, _From, #state{players=Players} = S) when is_binary(Player) ->
     io:format("GAME SERVER ~p~n", [S]),
-    case maps:is_key(Username, S#state.players) of
+    case maps:is_key(Player, S#state.players) of
         true -> {reply, {err, user_logged}, S};
         false ->
-            User=#user{player=Username},
-            {reply, {ok, logged}, S#state{players=maps:put(Username, User, Players)}}
+            User=#user{player=Player},
+            {reply, {ok, logged}, S#state{players=maps:put(Player, User, Players)}}
     end;
-handle_call({logout, _Username}, _From, #state{players=_Players}) ->
-    io:format("GAME SERVER TO DO: LOGOUT");
-handle_call({set_in_q, Username}, _From, #state{queue=Q,
+handle_call({set_in_q, Player}, _From, #state{queue=Q,
                                                 players=Players,
                                                 q_size=QSize}=State) ->
-    CanQ = not is_in_game(Players, Username) and not is_in_q(Players, Username) and is_logged(Players, Username),
+    CanQ = is_logged(Players, Player) andalso not is_in_game(Players, Player) andalso not is_in_q(Players, Player),
     case CanQ of
         true ->
-            {reply, {ok, set_in_q}, State#state{queue=queue:in(Username, Q), q_size=QSize + 1}};
+            Players1 = set_player_status(Players, Player, in_q),
+            {reply, {ok, set_in_q}, State#state{queue=Q ++ Player,
+                                            q_size=QSize + 1,
+                                            players=Players1}};
         false ->
             io:format("GAME SERVER Cannot set player in Q~n"),
             {reply, {err, cannot_set_in_q}, State}
@@ -88,6 +90,28 @@ handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid,
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
+handle_cast({game_end, [P1, P2]}, #state{players=Players0}=State) ->
+    Players1 = set_player_status(Players0, P1, logged),
+    Players2 = set_player_status(Players1, P2, logged),
+    {noreply, State#state{players=Players2}};
+handle_cast({logout, Player}, #state{players=Players,
+                                    queue=Q,
+                                    q_size=QSize}=State) ->
+    case maps:find(Player, Players) of
+        error -> ok;
+        {ok, PlayerData} -> 
+            case PlayerData#user.status of
+                in_game ->
+                    gen_fsm:sync_send_all_state_event(PlayerData#user.game, {logout, Player}),
+                    {noreply, State#state{players=maps:remove(Player, Players)}};
+                in_queue -> 
+                    NewQ = lists:delete(Player, Q),
+                    {noreply, State#state{queue=NewQ,
+                                         q_size=QSize-1,
+                                         players=maps:remove(Player, Players)}};
+                logged -> {noreply, State#state{players=maps:remove(Player, Players)}}
+            end
+    end;
 handle_cast({win, Player}, #state{players=Players}=State) ->
     io:format("~nMAIN SERVER: SAVE WIN FOR: ~p~n", [Player]),
     {ok, PlayerData} = maps:find(Player, Players),
@@ -122,13 +146,17 @@ handle_info(matchmake, #state{q_size=QSize}=State) when QSize < 2->
     timer:send_after(5000, matchmake),
     {noreply, State};
 handle_info(matchmake, #state{q_size=QSize,
-                              queue=Q,
-                              players=_Players}=State) ->
-    %io:format("GAME SERVER Matchmake > 2~n"),
-    {{value, _P1}, Q1} = queue:out(Q),
-    {{value, _P2}, Q2} = queue:out(Q1),
+                            queue=[P1, P2|T],
+                            players=Players,
+                            players_sup=PlayersSup,
+                            games_sup=GamePoolPid}=State) ->
+    supervisor:start_child(GamePoolPid, [<<"MyGame">>, PlayersSup, P1, P2]),
+    Players1 = set_player_status(Players, P1, in_game),
+    Players2 = set_player_status(Players1, P2, in_game),
     timer:send_after(5000, matchmake),
-    {noreply, State#state{queue=Q2, q_size=QSize-2}};
+    {noreply, State#state{queue=T,
+                          q_size=QSize-2,
+                         players=Players2}};
 handle_info(Msg, _State) ->
     io:format("GAME SERVER MSG: ~p~n", [Msg]),
     {noreply, _State}.
@@ -144,9 +172,23 @@ code_change(_OldVsn, State, _Extra) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-is_in_game(IngamePlayers, Username) -> maps:is_key(Username, IngamePlayers).
+is_in_game(Players, Player) -> 
+    {ok, PlayerData} = maps:find(Player, Players),
+    case PlayerData#user.status of
+        in_game -> true;
+        _ -> false
+    end.
 
-is_in_q(Q, Username) -> lists:member(Username, Q).
+is_in_q(Players, Player) -> 
+    {ok, PlayerData} = maps:find(Player, Players),
+    case PlayerData#user.status of
+        in_q -> true;
+        _ -> false
+    end.
 
-is_logged(Logged, Username) -> maps:is_key(Username, Logged).
+is_logged(Players, Player) -> maps:is_key(Player, Players).
+
+set_player_status(Players, Player, Status) ->
+    {ok, PlayerData} = maps:find(Player, Players),
+    maps:update(Player, PlayerData#user{status=Status}, Players).
 

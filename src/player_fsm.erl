@@ -62,7 +62,6 @@ register_mark({register_mark, Mark}, _From, #state{player=Player,
 init([Player, GamePid]) ->
     io:format("~nGEN_FSM PLAYER =======INIT PLAYER FSM=======~n"),
     io:format("GEN_FSM PLAYER OWN PID: ~p ~p.~n", [self(), Player]),
-    erlang:register(binary_to_atom(Player, utf8), self()),
     GamePid ! {register_player, Player, self()},
     io:format("GEN_FSM PLAYER =======END INIT PLAYER FSM=======~n~n"),
     {ok, register_mark, #state{player=Player, game_pid=GamePid}}.

@@ -160,6 +160,11 @@ handle_event(Event, StateName, StateData) ->
     io:format("GEN_FSM GAME Handle Event. Unknown event: ~p in fsm_state: ~p~n", [Event, StateName]),
     {next_state, test_state, StateData}.
 
+handle_sync_event(get_players, _From, StateName, #state{players=Players}=StateData) ->
+    Players = maps:fold(fun(_Key, #player_data{pid=Pid}, Acc) ->
+                         [Pid|Acc]
+                     end, [], Players),
+    {reply, Players, StateName, StateData};
 handle_sync_event(Event, _From, StateName, StateData) ->
     io:format("GEN_FSM GAME Handle sync. Unknown event: ~p in fsm_state: ~p~n", [Event, StateName]),
     {next_state, test_state, StateData}.

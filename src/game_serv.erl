@@ -85,8 +85,9 @@ handle_call({start_game, Player1, Player2}, _From, #state{games_sup=GamePoolPid,
     io:format("GAME SERVER GS: start game with players ~p ~p. Sup: ~p~n",[Player1,
                                                                           Player2,
                                                                           GamePoolPid]),
-    supervisor:start_child(GamePoolPid, [<<"MyGame">>, PlayersSup, Player1, Player2]),
-    {reply, {ok, State}, State};
+    {ok, Game} = supervisor:start_child(GamePoolPid, [<<"MyGame">>, PlayersSup, Player1, Player2]),
+    [Player1Pid, Player2Pid] = gen_fsm:sync_send_all_state_event(Game, get_players),
+    {reply, {Player1Pid, Player2Pid}, State};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State}.
 
